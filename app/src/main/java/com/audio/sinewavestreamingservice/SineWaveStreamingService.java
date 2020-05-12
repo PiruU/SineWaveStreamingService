@@ -6,47 +6,85 @@ import android.media.AudioManager;
 import android.media.AudioTrack;
 
 class SineWaveStreamingService {
-    AudioTrack _audioTrack;
-    Context _context;
-    float[] _audioBuffer;
-    int _audioBufferSize;
-    float _soundFrequency;
-    float  _soundPhase;
-    float _deviceAudioFrameRate;
-    int _buffersWrittenCount;
+    private AudioTrack _audioTrack;
+    private Context _context;
+    private int _audioBufferSize;
+    private float _soundFrequency;
+    private float _soundPhase;
+    private float _deviceAudioFrameRate;
+    private int _buffersWrittenCount;
+    private float[][] _alternateAudioBuffers;
+    private int _writtenBufferIndex;
+
 
     public SineWaveStreamingService(Context context, float soundFrequencyInHz, int audioBufferSize, float soundLengthInSeconds) {
-        this._context              = context;
-        this._audioBufferSize      = audioBufferSize;
-        this._audioBuffer          = new float[audioBufferSize];
-        this._soundFrequency       = soundFrequencyInHz;
-        this._deviceAudioFrameRate = (float)this.deviceAudioFrameRate();
-        this._buffersWrittenCount  = (int)(soundLengthInSeconds * (float)this.deviceAudioFrameRate() / (float)this._audioBufferSize);
+        this._context = context;
+        this._audioBufferSize = audioBufferSize;
+        this._soundFrequency = soundFrequencyInHz;
+        this._deviceAudioFrameRate = (float) this.deviceAudioFrameRate();
+        this._alternateAudioBuffers = new float[2][audioBufferSize];
+        this._writtenBufferIndex = 0;
+        this._buffersWrittenCount = (int) (soundLengthInSeconds * (float) this.deviceAudioFrameRate() / (float) this._audioBufferSize);
         this.initAudioTrack(this._audioBufferSize);
     }
 
     public void play() {
         this._audioTrack.play();
         for(int bufferIndex = 0; bufferIndex < this._buffersWrittenCount; ++bufferIndex) {
-            this.updateAudioBuffer();
-            this.writeAudioOutput();
+            this.updateNextAudioBuffer();
+            this.writeCurrentAudioOutput();
+            this.switchAudioBuffers();
         }
+        this.stopAndRelease();
     }
 
-    public void stopAndRelease() {
+    private void stopAndRelease() {
         this._audioTrack.stop();
         this._audioTrack.release();
     }
 
-    private void updateAudioBuffer() {
-        for(int iSample = 0; iSample < this._audioBufferSize; ++iSample) {
-            this._audioBuffer[iSample] = (float)Math.sin(this._soundPhase);
+    private void updateNextAudioBuffer() {
+        float[] updatedBuffer = this.updatedBuffer();
+        for (int frameIndex = 0; frameIndex < this._audioBufferSize; ++frameIndex) {
+            updatedBuffer[frameIndex] = (float) Math.sin(this._soundPhase);
             this.updateSoundPhase();
         }
     }
 
-    private void writeAudioOutput() {
-        this._audioTrack.write(this._audioBuffer, 0, this._audioBufferSize, AudioTrack.WRITE_BLOCKING);
+    private int updatedBufferIndex() {
+        if(this._writtenBufferIndex == 0) {
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+
+    private void writeCurrentAudioOutput() {
+        this._audioTrack.write(
+            this.writtenBuffer(), 0, this._audioBufferSize, AudioTrack.WRITE_BLOCKING
+        );
+    }
+
+    private float[] writtenBuffer() {
+        int bufferId = this.writtenBufferIndex();
+        return this._alternateAudioBuffers[bufferId];
+    }
+
+    private float[] updatedBuffer() {
+        int bufferId = this.updatedBufferIndex();
+        return this._alternateAudioBuffers[bufferId];
+    }
+
+    private int writtenBufferIndex() {
+        return this._writtenBufferIndex;
+    }
+
+    private void switchAudioBuffers() {
+        if (this._writtenBufferIndex == 0) {
+            this._writtenBufferIndex = 1;
+        } else {
+            this._writtenBufferIndex = 0;
+        }
     }
 
     private void updateSoundPhase() {
@@ -55,17 +93,18 @@ class SineWaveStreamingService {
 
     private void initAudioTrack(int bufferSize) {
         this._audioTrack = new AudioTrack(
-                AudioManager.STREAM_MUSIC             ,
-                this.deviceAudioFrameRate()          ,
+                AudioManager.STREAM_MUSIC,
+                this.deviceAudioFrameRate(),
                 AudioFormat.CHANNEL_CONFIGURATION_MONO,
-                AudioFormat.ENCODING_PCM_FLOAT        ,
+                AudioFormat.ENCODING_PCM_FLOAT,
                 bufferSize, AudioTrack.MODE_STREAM
         );
     }
 
     private int deviceAudioFrameRate() {
-        AudioManager audioManager = (AudioManager)this._context.getSystemService(Context.AUDIO_SERVICE);
+        AudioManager audioManager = (AudioManager) this._context.getSystemService(Context.AUDIO_SERVICE);
         return Integer.parseInt(audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE));
     }
 }
+
 
