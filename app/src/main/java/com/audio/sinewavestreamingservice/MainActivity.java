@@ -14,7 +14,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void playSineWave() {
         new SineWaveStreamingService(
-                this, 440f, 1024, 5.5f
+                this, 440f, 128, 5.5f
         ).play();
     }
 }
